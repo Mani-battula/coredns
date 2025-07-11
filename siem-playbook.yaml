@@ -1,0 +1,151 @@
+---
+- name: Connect the server to a destination server and run curl test
+  hosts: all
+  become: true
+  vars:
+    data_collector_ips:
+      - 10.206.32.69 
+      - 203.199.193.168 
+      - 10.206.32.40 
+      - 115.110.89.72 
+      - 115.110.89.104 
+      - 10.206.32.41 
+      - 203.199.193.167 
+      - 10.206.32.70 
+      - 115.110.89.35 
+      - 115.110.89.120 
+
+    tasks:
+    - name: Check TCP port 514 connectivity
+      wait_for:
+        host: "{{ item }}"
+        port: 514
+        timeout: 2
+        state: started
+      register: tcp_check
+      with_items: "{{ collector_ips }}"
+      ignore_errors: true
+    - name: Set reachable collector IP
+      set_fact:
+        reachable_collector: "{{ item.item }}"
+      when: (item.failed is not defined or not item.failed) and (reachable_collector is not defined)
+      loop: "{{ tcp_check.results }}"
+	  
+    - name: enter the data collector ip
+      ansible.builtin.lineinfile:
+       file:
+        path: /etc/rsyslog.conf
+        insertafter: EOF
+        line: auth,authpriv.* @tcp_check.results:514 
+        state: present
+
+    - name: restart the server 
+      service: 
+       name: restart rsyslog
+       state: restarted
+
+    - name: enable the server 
+      service: 
+       name: enable rsyslog
+       enabled: yes
+
+    - name: status the server 
+      service: 
+       name: status rsyslog
+       state: status
+				
+
+---
+- hosts: all
+  connection: ssh 
+  become: true
+  
+  tasks:
+    - name: Set target IP
+      set_fact:
+        target_ip: "115.110.89.72"
+
+    - name: Check TCP port 514 connectivity using wait_for
+      ansible.builtin.wait_for:
+        host: "{{ target_ip }}"
+        port: 514
+        timeout: 3
+        state: started
+      ignore_errors: true
+
+    - name: Add syslog collector to rsyslog.conf
+      ansible.builtin.lineinfile:
+        path: /etc/rsyslog.conf
+        line: "auth,authpriv.* @{{ target_ip }}:514"
+        state: present
+        insertafter: EOF
+
+    - name: Restart rsyslog service
+      ansible.builtin.service:
+        name: rsyslog
+        state: restarted
+        enabled: true
+
+    - name: Ensure rsyslog service is started and enabled
+      ansible.builtin.service:
+        name: rsyslog
+        state: started
+        enabled: true
+//////////////////////////////////////
+---
+- name: Connect the server to a destination server and run curl test
+  hosts: all
+  become: true
+  vars:
+    data_collector_ips:
+      - 10.206.32.69 
+      - 203.199.193.168 
+      - 10.206.32.40 
+      - 115.110.89.72 
+      - 115.110.89.104 
+      - 10.206.32.41 
+      - 203.199.193.167 
+      - 10.206.32.70 
+      - 115.110.89.35 
+      - 115.110.89.120 
+
+
+  tasks:
+    - name: check the connectivity from curl command with port 514.
+      set_fact:
+        selected_dest: "{{ data_collector_ips}}"
+           
+    - name: Try connecting to selected destination server using curl
+      ansible.builtin.shell: |
+        curl -vv telnet://{{data_collector_ips}}:514
+	- name: Fail if no collector is reachable
+      fail:
+        msg: "No collector IP is reachable on port 514."
+      when: reachable_collector is not defined
+    - name: enter the data collector ip
+      ansible.builtin.lineinfile:
+       file:
+        path: /etc/rsyslog.conf
+        insertafter: EOF
+        line: auth,authpriv.* @115.110.89.72:514 
+        state: present
+
+    - name: restart the server 
+      service: 
+       name: restart rsyslog
+       state: restarted
+
+    - name: enable the server 
+      service: 
+       name: enable rsyslog
+       enabled: yes
+
+    - name: status the server 
+      service: 
+       name: status rsyslog
+       state: status	  
+	   
+	   
+	   
+
+
